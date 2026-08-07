@@ -36,9 +36,7 @@ export default function RootLayout({ children }) {
               <li>
                 <Link href="contact">Contact</Link>
               </li>
-              <li>
-                <LoginStatus />
-              </li>
+              <LoginStatus />
             </ul>
           </nav>
         </header>

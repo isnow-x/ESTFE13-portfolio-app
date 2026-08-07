@@ -1,30 +1,46 @@
 "use client";
 import { createClient } from "@/utils/supabase/client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function Insert() {
   const supabase = createClient();
   const router = useRouter();
 
-  const [formData, setFormData] = useState({
+  const INITIAL_PORTFOLIO = {
     title: "",
     content: "",
     url: "",
     review: "",
     reviewer: "",
-    rep1_img: "",
-    rep1_desc: "",
-    rep2_img: "",
-    rep2_desc: "",
-    thumbnail: "",
-  });
+  };
+  const createInitialImages = () => [
+    {
+      file: null,
+      decription: "",
+      displayOrder: 1,
+    },
+    {
+      file: null,
+      decription: "",
+      displayOrder: 2,
+    },
+  ];
+
+  const [portfolio, setPortfolio] = useState(INITIAL_PORTFOLIO);
+  const [portfolioImages, setPortfolioImages] = useState(createInitialImages);
 
   const [thumbnail, setThumbnail] = useState(null);
   const [user, setUser] = useState(null);
-  const [authForm, setAuthForm] = useState({
+  const [authForm, setAuthform] = useState({
     email: "",
     password: "",
+  });
+
+  const fileRef = useRef({
+    image1: null,
+    image2: null,
+    thumbnail: null,
   });
 
   useEffect(() => {
@@ -38,7 +54,19 @@ export default function Insert() {
 
   async function insertData(e) {
     e.preventDefault();
-    const { error } = await supabase.from("portfolio").insert(formData);
+    //파일 업로드 후 경로 저장
+    let thumbnailPath = null;
+    if (thumbnail) {
+      thumbnailPath = await uploadThumbnail(thumbnail);
+      if (!thumbnailPath) {
+        alert("파일 업로드 실패");
+        return; //파일 업로드 실패시 글 등록 취소
+      }
+    }
+
+    const { error } = await supabase
+      .from("portfolio")
+      .insert({ ...formData, thumbnail: thumbnailPath });
     if (error) {
       console.log(error);
     } else {
@@ -46,46 +74,53 @@ export default function Insert() {
       router.push("/");
       router.refresh();
     }
-    if (thumbnail) {
-      await uploadThumbnail(thumbnail);
-    }
   }
-
-  const handleChange = e => {
+  const handlePortfolioChange = e => {
     const { name, value } = e.target;
-
-    setFormData({
-      ...formData,
+    setPortfolio(prev => ({
+      ...prev,
       [name]: value,
-    });
+    }));
+  };
+
+  const handlePortfolioFileChange = index => e => {
+    const selectedFile = e.target.files?.[0] ?? null;
+    setPortfolioImages(prev =>
+      prev.map((image, idx) => (index === idx ? { ...image, file: selectedFile } : image)),
+    );
+  };
+  const handlePortfolioDescChange = index => e => {
+    const { value } = e.target;
+    setPortfolioImages(prev =>
+      prev.map((image, idx) => (index === idx ? { ...image, decription: value } : image)),
+    );
   };
 
   const handleAuthChange = e => {
     const { name, value } = e.target;
-    setAuthForm(prev => ({ ...prev, [name]: value }));
+    setAuthform(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleFileChange = e => {
+  const handleThumbnailFileChange = e => {
     setThumbnail(e.target.files[0]);
     console.log(e.target.files[0]);
   };
 
   async function uploadThumbnail(file) {
     const ext = file.name.split(".").pop();
-    const fileName = `${crypto.randomUUID()}.${ext}`;
-    const { data, error } = await supabase.storage
-      .from("portfolio")
-      .upload(`thumbnail/${fileName}`, file);
+    const filePath = `thumbnail/${crypto.randomUUID()}.${ext}`;
+
+    const { data, error } = await supabase.storage.from("portfolio").upload(filePath, file);
     if (error) {
       // Handle error
       console.error("파일 업로드 실패:", error);
     } else {
       // Handle success
       console.log("파일 업로드 성공:");
+      return filePath;
     }
   }
-
-  // 로그인 진행
+  //로그인 진행
   const handleLogin = async e => {
     e.preventDefault();
     const { data, error } = await supabase.auth.signInWithPassword(authForm);
@@ -121,7 +156,7 @@ export default function Insert() {
                 type="password"
                 id="password"
                 name="password"
-                placeholder="password"
+                placeholder="비밀번호"
                 required
                 onChange={handleAuthChange}
               />
@@ -141,14 +176,14 @@ export default function Insert() {
       <div className="contact_form">
         <form onSubmit={insertData}>
           <p className="field">
-            <label htmlFor="title">프로젝트 이름: </label>
+            <label htmlFor="title">프로젝트 이름:</label>
             <input
               type="text"
               id="title"
               name="title"
               placeholder="프로젝트 이름"
               required
-              onChange={handleChange}
+              onChange={handlePortfolioChange}
             />
           </p>
           <p className="field">
@@ -160,28 +195,28 @@ export default function Insert() {
               rows="10"
               placeholder="프로젝트 설명"
               required
-              onChange={handleChange}
+              onChange={handlePortfolioChange}
             ></textarea>
           </p>
           <p className="field">
-            <label htmlFor="url">프로젝트 주소</label>
+            <label htmlFor="url">프로젝트 주소:</label>
             <input
               type="url"
               id="url"
               name="url"
               placeholder="프로젝트 주소"
-              onChange={handleChange}
+              onChange={handlePortfolioChange}
             />
           </p>
-          <p className="review">
-            <label htmlFor="content">프로젝트 후기:</label>
+          <p className="field">
+            <label htmlFor="review">프로젝트 후기:</label>
             <textarea
               name="review"
               id="review"
               cols="30"
               rows="10"
               placeholder="프로젝트 후기"
-              onChange={handleChange}
+              onChange={handlePortfolioChange}
             ></textarea>
           </p>
           <p className="field">
@@ -191,7 +226,7 @@ export default function Insert() {
               id="reviewer"
               name="reviewer"
               placeholder="후기 글쓴이"
-              onChange={handleChange}
+              onChange={handlePortfolioChange}
             />
           </p>
           <p className="field">
@@ -201,12 +236,17 @@ export default function Insert() {
               id="rep1_img"
               name="rep1_img"
               accept="image/*"
-              onChange={handleChange}
+              onChange={handlePortfolioFileChange(0)}
             />
           </p>
           <p className="field">
-            <label htmlFor="rep1_img">대표 이미지 1 설명</label>
-            <input type="text" id="rep1_img" name="rep1_img" onChange={handleChange} />
+            <label htmlFor="rep1_desc">대표 이미지 1 설명</label>
+            <input
+              type="text"
+              id="rep1_desc"
+              name="rep1_desc"
+              onChange={handlePortfolioDescChange(0)}
+            />
           </p>
           <p className="field">
             <label htmlFor="rep2_img">대표 이미지 2:</label>
@@ -215,12 +255,17 @@ export default function Insert() {
               id="rep2_img"
               name="rep2_img"
               accept="image/*"
-              onChange={handleChange}
+              onChange={handlePortfolioFileChange(1)}
             />
           </p>
           <p className="field">
-            <label htmlFor="rep2_img">대표 이미지 2 설명</label>
-            <input type="text" id="rep2_img" name="rep2_img" onChange={handleChange} />
+            <label htmlFor="rep2_desc">대표 이미지 2 설명</label>
+            <input
+              type="text"
+              id="rep2_desc"
+              name="rep2_desc"
+              onChange={handlePortfolioDescChange(1)}
+            />
           </p>
           <p className="field">
             <label htmlFor="thumbnail">썸네일:</label>
@@ -229,7 +274,7 @@ export default function Insert() {
               id="thumbnail"
               name="thumbnail"
               accept="image/*"
-              onChange={handleFileChange}
+              onChange={handleThumbnailFileChange}
             />
           </p>
           <p className="submit">
