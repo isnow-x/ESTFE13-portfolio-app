@@ -17,12 +17,12 @@ export default function Insert() {
   const createInitialImages = () => [
     {
       file: null,
-      decription: "",
+      description: "",
       displayOrder: 1,
     },
     {
       file: null,
-      decription: "",
+      description: "",
       displayOrder: 2,
     },
   ];
@@ -52,29 +52,85 @@ export default function Insert() {
     })();
   }, [supabase.auth]);
 
+  const resetForm = () => {
+    setPortfolio(INITIAL_PORTFOLIO);
+    setPortfolioImages(createInitialImages());
+    setThumbnail(null);
+    Object.values(fileRef.current).forEach(el => {
+      if (el) {
+        el.value = "";
+      }
+    });
+  };
+
   async function insertData(e) {
     e.preventDefault();
-    //파일 업로드 후 경로 저장
+
+    //1. 썸네일 업로드
     let thumbnailPath = null;
     if (thumbnail) {
-      thumbnailPath = await uploadThumbnail(thumbnail);
+      thumbnailPath = await uploadFile(thumbnail, "thumbnail");
       if (!thumbnailPath) {
         alert("파일 업로드 실패");
         return; //파일 업로드 실패시 글 등록 취소
       }
     }
-
-    const { error } = await supabase
+    //2. portfolio 테이블 저장
+    const { data: insertedPortfolio, error } = await supabase
       .from("portfolio")
-      .insert({ ...formData, thumbnail: thumbnailPath });
+      .insert({ ...portfolio, thumbnail: thumbnailPath }) // 글 등록
+      .select("id") // 등록한 글의 id 조회
+      .single();
+
     if (error) {
       console.log(error);
+      await supabase.storage.from("portfolio").remove({ thumbnailPath });
+      alert(`대표 이미지 입력 실패:${error.message}`);
     } else {
-      console.log("데이터 입력 성공");
-      router.push("/");
-      router.refresh();
+      // console.log("데이터 입력 성공");
+      // router.push("/");
+      // router.refresh();
     }
+    const portfolioId = insertedPortfolio.id; // 새 글의 id 할당
+    const imageRows = [];
+    const uploadedImagePaths = [];
+    //3. 대표 이미지 업로드
+    for (let image of portfolioImages) {
+      if (!image.file) {
+        continue; // 첫번째 값이 없으면 다음 회차에서 계속
+      }
+      // 파일 업로드
+      const imageResult = await uploadFile(image.file, "portfolio_images");
+      uploadedImagePaths.push(imageResult); // 대표이미지 파일의 경로 할당
+      imageRows.push({
+        portfolio_id: portfolioId,
+        image_url: imageResult,
+        description: image.description,
+        display_order: image.displayOrder,
+      });
+    }
+    //4. portfolio_images 테이블 저장
+    if (imageRows.length > 0) {
+      const { error } = await supabase.from("portfolio_images").insert(imageRows);
+      if (error) {
+        console.error("대표 이미지 등록 실패:", error);
+        // 버켓에 저장된 대표 이미지 삭제
+        if (uploadedImagePaths.length > 0) {
+          await supabase.storage.from("portfolio").remove(uploadedImagePaths);
+        }
+        // portfolio 테이블에서 글 삭제
+        await supabase.from("portfolio").delete().eq("id", portfolioId);
+
+        // thumbnail 파일 삭제
+        await supabase.storage.from("portfolio").remove([thumbnailPath]);
+        alert(`대표 이미지 입력 실패:${error.message}`);
+      }
+    }
+    // 글 등록 성공시 - 모든 입력값 초기화
+    alert("글 등록 성공");
+    resetForm();
   }
+
   const handlePortfolioChange = e => {
     const { name, value } = e.target;
     setPortfolio(prev => ({
@@ -92,7 +148,7 @@ export default function Insert() {
   const handlePortfolioDescChange = index => e => {
     const { value } = e.target;
     setPortfolioImages(prev =>
-      prev.map((image, idx) => (index === idx ? { ...image, decription: value } : image)),
+      prev.map((image, idx) => (index === idx ? { ...image, description: value } : image)),
     );
   };
 
@@ -106,9 +162,9 @@ export default function Insert() {
     console.log(e.target.files[0]);
   };
 
-  async function uploadThumbnail(file) {
+  async function uploadFile(file, folder) {
     const ext = file.name.split(".").pop();
-    const filePath = `thumbnail/${crypto.randomUUID()}.${ext}`;
+    const filePath = `${folder}/${crypto.randomUUID()}.${ext}`;
 
     const { data, error } = await supabase.storage.from("portfolio").upload(filePath, file);
     if (error) {
@@ -146,6 +202,7 @@ export default function Insert() {
                 id="email"
                 name="email"
                 placeholder="email"
+                value={authForm.email}
                 required
                 onChange={handleAuthChange}
               />
@@ -155,6 +212,7 @@ export default function Insert() {
               <input
                 type="password"
                 id="password"
+                value={authForm.password}
                 name="password"
                 placeholder="비밀번호"
                 required
@@ -182,6 +240,7 @@ export default function Insert() {
               id="title"
               name="title"
               placeholder="프로젝트 이름"
+              value={portfolio.title}
               required
               onChange={handlePortfolioChange}
             />
@@ -194,6 +253,7 @@ export default function Insert() {
               cols="30"
               rows="10"
               placeholder="프로젝트 설명"
+              value={portfolio.description}
               required
               onChange={handlePortfolioChange}
             ></textarea>
@@ -205,6 +265,7 @@ export default function Insert() {
               id="url"
               name="url"
               placeholder="프로젝트 주소"
+              value={portfolio.url}
               onChange={handlePortfolioChange}
             />
           </p>
@@ -216,6 +277,7 @@ export default function Insert() {
               cols="30"
               rows="10"
               placeholder="프로젝트 후기"
+              value={portfolio.review}
               onChange={handlePortfolioChange}
             ></textarea>
           </p>
@@ -226,6 +288,7 @@ export default function Insert() {
               id="reviewer"
               name="reviewer"
               placeholder="후기 글쓴이"
+              value={portfolio.reviewer}
               onChange={handlePortfolioChange}
             />
           </p>
@@ -236,6 +299,9 @@ export default function Insert() {
               id="rep1_img"
               name="rep1_img"
               accept="image/*"
+              ref={element => {
+                fileRef.current.image1 = element;
+              }}
               onChange={handlePortfolioFileChange(0)}
             />
           </p>
@@ -245,6 +311,7 @@ export default function Insert() {
               type="text"
               id="rep1_desc"
               name="rep1_desc"
+              value={portfolioImages[0].description}
               onChange={handlePortfolioDescChange(0)}
             />
           </p>
@@ -255,6 +322,9 @@ export default function Insert() {
               id="rep2_img"
               name="rep2_img"
               accept="image/*"
+              ref={element => {
+                fileRef.current.image2 = element;
+              }}
               onChange={handlePortfolioFileChange(1)}
             />
           </p>
@@ -264,6 +334,7 @@ export default function Insert() {
               type="text"
               id="rep2_desc"
               name="rep2_desc"
+              value={portfolioImages[1].description}
               onChange={handlePortfolioDescChange(1)}
             />
           </p>
@@ -274,6 +345,9 @@ export default function Insert() {
               id="thumbnail"
               name="thumbnail"
               accept="image/*"
+              ref={element => {
+                fileRef.current.thumbnail = element;
+              }}
               onChange={handleThumbnailFileChange}
             />
           </p>

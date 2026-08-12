@@ -4,7 +4,21 @@ export default async function Portfolio({ params }) {
   const supabase = createClient();
   const { id } = await params;
 
-  const { data, error } = await supabase.from("portfolio").select().eq("id", id).single();
+  const { data: current, error } = await supabase
+    .from("portfolio")
+    .select(
+      `*,
+      portfolio_images(
+      id,
+      image_url,
+      description,
+      display_order
+      )
+    `,
+    )
+    .eq("id", id)
+    .order("display_order", { referencedTable: "portfolio_images", ascending: true })
+    .single();
 
   // 이전글 id, title 조회
   const { data: prev } = await supabase
@@ -31,11 +45,11 @@ export default async function Portfolio({ params }) {
         <div className="col-md-8 decription">
           <div className="contents shadow">
             {/* <img src="images/portfolio_single_img1.jpg" alt="img1"> */}
-            <p>{data?.rep1_desc ?? ""}</p>
+            <p>{}</p>
           </div>
           <div className="contents shadow">
             {/* <img src="images/portfolio_single_img2.jpg" alt="img2"> */}
-            <p>{data?.rep2_desc ?? ""}</p>
+            <p>{}</p>
           </div>
         </div>
         <div className="col-md-4 portfolio_info">

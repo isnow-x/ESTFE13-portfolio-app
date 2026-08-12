@@ -1,8 +1,18 @@
 import Image from "next/image";
 import { createClient } from "@/utils/supabase/client";
 
-export default function Home({ data }) {
+export default async function Portfolio() {
   const supabase = createClient();
+  const { data, error } = await supabase
+    .from("portfolio")
+    .select()
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  if (error) {
+    console.error("연결실패", error);
+    return <div>프로젝트 로드 실패</div>;
+  }
 
   const getPublicURL = path => {
     if (!path) return "";
